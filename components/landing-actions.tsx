@@ -13,7 +13,7 @@ export function LandingActions({
     return (
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-2 rounded-lg bg-terracotta px-5 py-2.5 text-sm font-medium text-paper shadow-[0_2px_0_#9b3d24] transition-transform hover:-translate-y-0.5 active:translate-y-0"
+        className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-terracotta to-rust px-6 py-3 text-sm font-medium text-paper shadow-md shadow-terracotta/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-terracotta/35 active:translate-y-0"
       >
         Open dashboard
         <span aria-hidden="true">→</span>
@@ -25,7 +25,7 @@ export function LandingActions({
     return (
       <Link
         href="/signin"
-        className="text-sm font-medium text-espresso/70 transition-colors hover:text-espresso"
+        className="text-sm font-medium text-espresso/70 transition-colors hover:text-espresso hover:underline decoration-terracotta decoration-2 underline-offset-4"
       >
         Sign in
       </Link>
@@ -36,13 +36,13 @@ export function LandingActions({
     <div className="flex flex-wrap items-center gap-3">
       <Link
         href="/signup"
-        className="inline-flex items-center rounded-lg bg-terracotta px-5 py-2.5 text-sm font-medium text-paper shadow-[0_2px_0_#9b3d24] transition-transform hover:-translate-y-0.5 active:translate-y-0"
+        className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-terracotta to-rust px-6 py-3 text-sm font-medium text-paper shadow-md shadow-terracotta/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-terracotta/35 active:translate-y-0"
       >
         Get started
       </Link>
       <Link
         href="/signin"
-        className="inline-flex items-center rounded-lg border border-espresso/15 bg-paper/60 px-5 py-2.5 text-sm font-medium text-espresso transition-colors hover:bg-paper"
+        className="inline-flex items-center justify-center rounded-lg border border-espresso/12 bg-paper/70 px-6 py-3 text-sm font-medium text-espresso shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-paper hover:border-espresso/25 hover:shadow-md active:translate-y-0"
       >
         Sign in
       </Link>

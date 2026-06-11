@@ -5,10 +5,10 @@ export const authInputClass =
   "w-full rounded-lg border border-espresso/12 bg-cream/40 px-3 py-2.5 text-sm text-espresso outline-none transition-colors placeholder:text-espresso/35 focus:border-terracotta/40 focus:bg-paper focus:ring-2 focus:ring-terracotta/10";
 
 export const authPrimaryButtonClass =
-  "flex h-11 w-full items-center justify-center rounded-lg bg-terracotta text-sm font-medium text-paper shadow-[0_2px_0_#9b3d24] transition-transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0";
+  "flex h-11 w-full items-center justify-center rounded-lg bg-gradient-to-r from-terracotta to-rust text-sm font-medium text-paper shadow-md shadow-terracotta/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-terracotta/35 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0";
 
 export const authSecondaryButtonClass =
-  "flex h-11 w-full items-center justify-center rounded-lg border border-espresso/12 bg-paper/60 text-sm font-medium text-espresso transition-colors hover:bg-paper";
+  "flex h-11 w-full items-center justify-center rounded-lg border border-espresso/12 bg-paper/70 text-sm font-medium text-espresso shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-paper hover:border-espresso/25 hover:shadow-md active:translate-y-0";
 
 export function AuthDivider() {
   return (
