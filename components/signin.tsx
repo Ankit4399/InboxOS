@@ -25,9 +25,9 @@ export default function SignIn() {
     setLoading(true);
 
     await signIn.email(
-      { email, password, callbackURL: "/" },
+      { email, password, callbackURL: "/dashboard" },
       {
-        onSuccess: () => router.push("/"),
+        onSuccess: () => router.push("/dashboard"),
         onError: (ctx) => {
           setError(ctx.error.message ?? "Failed to sign in");
           setLoading(false);
@@ -39,7 +39,7 @@ export default function SignIn() {
   const handleGoogleSignIn = async () => {
     setError(null);
     await signIn.social(
-      { provider: "google", callbackURL: "/" },
+      { provider: "google", callbackURL: "/dashboard" },
       {
         onError: (ctx) =>
           setError(ctx.error.message ?? "Failed to sign in with Google"),

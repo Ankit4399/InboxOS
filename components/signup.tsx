@@ -26,9 +26,9 @@ export default function SignUp() {
     setLoading(true);
 
     await signUp.email(
-      { name, email, password, callbackURL: "/" },
+      { name, email, password, callbackURL: "/dashboard" },
       {
-        onSuccess: () => router.push("/"),
+        onSuccess: () => router.push("/dashboard"),
         onError: (ctx) => {
           setError(ctx.error.message ?? "Failed to sign up");
           setLoading(false);
@@ -40,7 +40,7 @@ export default function SignUp() {
   const handleGoogleSignUp = async () => {
     setError(null);
     await signIn.social(
-      { provider: "google", callbackURL: "/" },
+      { provider: "google", callbackURL: "/dashboard" },
       {
         onError: (ctx) =>
           setError(ctx.error.message ?? "Failed to sign up with Google"),
