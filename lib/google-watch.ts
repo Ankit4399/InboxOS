@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 
 // Helper to retrieve integration credentials and account refresh tokens from Corsair,
 // then exchange them for a fresh Google API access token.
-async function getGoogleAccessToken(userId: string, pluginName: 'gmail' | 'googlecalendar') {
+export async function getGoogleAccessToken(userId: string, pluginName: 'gmail' | 'googlecalendar') {
     // 1. Get client credentials (integration-level)
     const getClientId = corsair.keys[pluginName].get_client_id;
     const getClientSecret = corsair.keys[pluginName].get_client_secret;

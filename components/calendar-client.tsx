@@ -66,10 +66,10 @@ export default function CalendarClient() {
     }
   }, []);
 
-  // Initial fetch + polling every 60 seconds
+  // Initial fetch + polling every 3 seconds for near-instant real-time updates
   useEffect(() => {
     fetchEvents();
-    const interval = setInterval(() => fetchEvents(), 60000);
+    const interval = setInterval(() => fetchEvents(), 3000);
     return () => clearInterval(interval);
   }, [fetchEvents]);
 

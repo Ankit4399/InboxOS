@@ -5,6 +5,7 @@ import { corsair } from '@/corsair';
 import { db } from '@/db/index';
 import { corsairAccounts, corsairIntegrations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { registerGmailWatch, registerCalendarWatch } from '@/lib/google-watch';
 
 const REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/connect/callback`;
 
@@ -34,6 +35,28 @@ export async function GET(request: NextRequest) {
             state,
             redirectUri: REDIRECT_URI,
         });
+
+        // Trigger real-time push subscription watches
+        const baseUrl = process.env.WEBHOOK_BASE_URL || new URL(request.url).origin;
+        try {
+            if (plugin === 'gmail') {
+                const topicName = process.env.GMAIL_PUB_SUB_TOPIC;
+                if (topicName) {
+                    console.log(`[Watch Setup] Registering Gmail watch for user ${tenantId} on topic ${topicName}...`);
+                    const gmailResult = await registerGmailWatch(tenantId, topicName);
+                    console.log(`[Watch Setup] Gmail watch registered successfully. Expiration: ${gmailResult.expiration}`);
+                } else {
+                    console.warn(`[Watch Setup] Gmail topic name not configured in GMAIL_PUB_SUB_TOPIC environment variable. Skipping watch registration.`);
+                }
+            } else if (plugin === 'googlecalendar') {
+                console.log(`[Watch Setup] Registering Google Calendar watch for user ${tenantId} at URL ${baseUrl}...`);
+                const calendarResult = await registerCalendarWatch(tenantId, baseUrl);
+                console.log(`[Watch Setup] Calendar watch registered successfully. Channel ID: ${calendarResult.channelId}, Expiration: ${calendarResult.expiration}`);
+            }
+        } catch (watchErr: any) {
+            // Log watch registration errors, but do not block user connection redirection
+            console.error(`[Watch Setup Error] Failed to register watch for ${plugin} on user ${tenantId}:`, watchErr);
+        }
 
         // Query all connected integrations for this tenant to see if both are set up
         const userAccounts = await db

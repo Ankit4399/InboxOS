@@ -5,8 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db/index";
 import { corsairAccounts, corsairIntegrations } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import InboxClient from "@/components/inbox-client";
-import CalendarClient from "@/components/calendar-client";
+import DashboardView from "@/components/dashboard-view";
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
@@ -109,18 +108,11 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Main Content Layout */}
-        <div className="grid gap-8 lg:grid-cols-3">
-          {/* Left Column: Gmail Inbox — Client Component with live polling */}
-          <div className="lg:col-span-2 space-y-6 animate-fade-in-up animation-delay-100">
-            <InboxClient />
-          </div>
-
-          {/* Right Column: Google Calendar — Client Component with live polling */}
-          <div className="lg:col-span-1 space-y-6 animate-fade-in-up animation-delay-200">
-            <CalendarClient />
-          </div>
-        </div>
+        {/* Tabbed / Dynamic Main Content */}
+        <DashboardView 
+          isGmailConnected={isGmailConnected}
+          isCalendarConnected={isCalendarConnected}
+        />
       </main>
     </div>
   );
