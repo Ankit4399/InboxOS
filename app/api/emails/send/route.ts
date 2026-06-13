@@ -6,6 +6,7 @@ import { db } from '@/db/index';
 import { corsairAccounts, corsairIntegrations } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getGoogleAccessToken } from '@/lib/google-watch';
+import { cacheGmailMessageMetadata } from '@/lib/gmail-message';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,6 +181,14 @@ export async function POST(req: Request) {
             raw,
             threadId: threadId || undefined,
         });
+
+        if (result.id) {
+            try {
+                await cacheGmailMessageMetadata(client, result.id);
+            } catch (cacheErr) {
+                console.error('[Gmail Send] Failed to cache sent message:', cacheErr);
+            }
+        }
 
         console.log(
             `[Gmail Send] Email sent successfully. ID: ${result.id}, Thread: ${result.threadId}`

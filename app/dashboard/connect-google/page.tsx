@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db/index";
 import { corsairAccounts, corsairIntegrations } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { EnableGmailPush } from "@/components/enable-gmail-push";
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -119,6 +120,12 @@ export default async function ConnectGooglePage(props: PageProps) {
                 </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {isGmailConnected && (
+          <div className="mb-8 animate-fade-in-up">
+            <EnableGmailPush />
           </div>
         )}
 

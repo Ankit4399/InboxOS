@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import ComposeModal from './compose-modal';
 import EmailViewer, { EmailDetail } from './email-viewer';
 
@@ -36,10 +36,62 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function InboxSpinner({ className = 'h-5 w-5' }: { className?: string }) {
+  return (
+    <svg className={`animate-spin text-terracotta ${className}`} viewBox="0 0 24 24" aria-hidden="true">
+      <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" />
+      <path
+        className="opacity-90"
+        fill="currentColor"
+        d="M12 2a10 10 0 0 1 10 10h-3a7 7 0 0 0-7-7V2z"
+      />
+    </svg>
+  );
+}
+
+function EmailListSkeleton() {
+  return (
+    <div className="divide-y divide-espresso/6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-start gap-3 p-4 animate-pulse"
+          style={{ animationDelay: `${i * 80}ms` }}
+        >
+          <div className="mt-0.5 h-4 w-4 shrink-0 rounded-full bg-espresso/10" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="h-3 rounded bg-espresso/10" style={{ width: `${35 + (i % 3) * 10}%` }} />
+              <div className="h-2.5 w-10 shrink-0 rounded bg-espresso/8" />
+            </div>
+            <div className="h-3 rounded bg-espresso/8" style={{ width: `${55 + (i % 2) * 15}%` }} />
+            <div className="h-2.5 w-full rounded bg-espresso/5" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmailListLoader({ category }: { category: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-terracotta/10">
+        <InboxSpinner className="h-6 w-6" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-espresso/70">Loading {category}…</p>
+        <p className="mt-1 text-xs text-espresso/40">Fetching your messages</p>
+      </div>
+    </div>
+  );
+}
+
 export default function InboxClient() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isLoadingList, setIsLoadingList] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<Category>('inbox');
   
@@ -54,37 +106,173 @@ export default function InboxClient() {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const isFetchingRef = useRef(false);
+  const syncInProgressRef = useRef(false);
+  const fetchIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const pollStartedRef = useRef(false);
+  const watchRegisteredRef = useRef(false);
 
-  const fetchEmails = useCallback(async (isManualRefresh = false) => {
-    if (isManualRefresh) setIsRefreshing(true);
-    try {
-      const res = await fetch(`/api/emails?category=${category}`, { cache: 'no-store' });
-      const data = await res.json();
+  // Register Gmail Pub/Sub watch once per session (fixes users who connected before topic was set)
+  useEffect(() => {
+    if (watchRegisteredRef.current) return;
+    watchRegisteredRef.current = true;
 
-      if (!res.ok) {
-        setError(data.error || 'Failed to fetch emails');
-        setConnected(data.connected ?? false);
-        return;
-      }
+    fetch("/api/gmail/watch", { method: "POST" })
+      .then(async (res) => {
+        if (res.ok) {
+          sessionStorage.setItem("inboxos-gmail-watch", new Date().toDateString());
+        } else {
+          const data = await res.json().catch(() => ({}));
+          console.warn("[Gmail Watch]", data.error || "Registration failed");
+        }
+      })
+      .catch(() => {});
+  }, []);
 
+  const handleCategoryChange = (nextCategory: Category) => {
+    if (nextCategory === category) return;
+    setCategory(nextCategory);
+    setSelectedEmailId(null);
+    setEmailDetail(null);
+    setIsLoadingList(true);
+  };
+
+  const applyEmailResponse = useCallback((data: { emails?: Email[]; connected?: boolean }, resOk: boolean) => {
+    if (resOk) {
       setEmails(data.emails || []);
-      setConnected(data.connected);
+      setConnected(data.connected ?? true);
       setError(null);
       setLastRefreshed(new Date());
+    } else {
+      setError((data as { error?: string }).error || 'Failed to fetch emails');
+      setConnected(data.connected ?? false);
+    }
+  }, []);
+
+  const fetchEmails = useCallback(async (options?: {
+    sync?: boolean;
+    manual?: boolean;
+    silent?: boolean;
+    signal?: AbortSignal;
+  }) => {
+    const { sync = false, manual = false, silent = false, signal } = options ?? {};
+
+    if (sync) {
+      if (syncInProgressRef.current) return;
+      syncInProgressRef.current = true;
+    } else {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+    }
+
+    if (manual) setIsRefreshing(true);
+    if (!silent && sync) setIsLoadingList(true);
+
+    try {
+      const syncParam = sync ? '&sync=true' : '';
+      const res = await fetch(`/api/emails?category=${category}${syncParam}`, {
+        cache: 'no-store',
+        signal,
+      });
+      const data = await res.json();
+      applyEmailResponse(data, res.ok);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError('Network error. Please try again.');
     } finally {
       setLoading(false);
-      setIsRefreshing(false);
+      if (manual) setIsRefreshing(false);
+      if (!silent && sync) setIsLoadingList(false);
+      if (sync) syncInProgressRef.current = false;
+      else isFetchingRef.current = false;
     }
-  }, [category]);
+  }, [applyEmailResponse, category]);
 
-  // Initial fetch + polling every 5 seconds for background sync
+  // Load folder: cache first, then one background sync (no overlapping requests)
   useEffect(() => {
-    fetchEmails();
-    const interval = setInterval(() => fetchEmails(), 5000);
-    return () => clearInterval(interval);
-  }, [fetchEmails]);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const fetchId = ++fetchIdRef.current;
+    pollStartedRef.current = false;
+    setIsLoadingList(true);
+
+    const loadFolder = async () => {
+      let cacheHit = false;
+
+      try {
+        const cacheRes = await fetch(`/api/emails?category=${category}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const cacheData = await cacheRes.json();
+        if (fetchId !== fetchIdRef.current) return;
+
+        if (cacheRes.ok && (cacheData.emails?.length ?? 0) > 0) {
+          applyEmailResponse(cacheData, true);
+          cacheHit = true;
+          setIsLoadingList(false);
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+      }
+
+      if (controller.signal.aborted || fetchId !== fetchIdRef.current) return;
+
+      // Brief pause after cache hit so UI renders before the heavy Gmail sync
+      if (cacheHit) {
+        await new Promise((r) => setTimeout(r, 800));
+        if (controller.signal.aborted || fetchId !== fetchIdRef.current) return;
+      }
+
+      if (syncInProgressRef.current) return;
+      syncInProgressRef.current = true;
+      setIsRefreshing(true);
+
+      try {
+        const res = await fetch(`/api/emails?category=${category}&sync=true`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (fetchId !== fetchIdRef.current) return;
+        applyEmailResponse(data, res.ok);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (fetchId !== fetchIdRef.current) return;
+        setError('Network error. Please try again.');
+      } finally {
+        if (fetchId !== fetchIdRef.current) return;
+        setLoading(false);
+        setIsLoadingList(false);
+        setIsRefreshing(false);
+        syncInProgressRef.current = false;
+        pollStartedRef.current = true;
+      }
+    };
+
+    loadFolder();
+
+    // Poll only after initial sync completes, every 15s, one at a time
+    const interval = setInterval(() => {
+      if (!pollStartedRef.current || syncInProgressRef.current) return;
+      fetchEmails({ sync: true, silent: true });
+    }, 15000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !syncInProgressRef.current) {
+        fetchEmails({ sync: true, silent: true });
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [applyEmailResponse, category, fetchEmails]);
 
   // Fetch full detail when email is selected
   useEffect(() => {
@@ -136,7 +324,7 @@ export default function InboxClient() {
         )
       });
       // Refresh list to keep DB fresh
-      fetchEmails();
+      fetchEmails({ sync: true, silent: true });
     } catch {
       // Revert optimistic update on error
       setEmails(prev => prev.map(email => 
@@ -164,7 +352,7 @@ export default function InboxClient() {
             : { removeLabelIds: ['UNREAD'] }
         )
       });
-      fetchEmails();
+      fetchEmails({ sync: true, silent: true });
     } catch {
       setEmails(prev => prev.map(email => 
         email.id === emailId ? { ...email, isUnread: currentUnread } : email
@@ -186,9 +374,9 @@ export default function InboxClient() {
       await fetch(`/api/emails/${emailId}`, {
         method: 'DELETE'
       });
-      fetchEmails();
+      fetchEmails({ sync: true, silent: true });
     } catch {
-      fetchEmails();
+      fetchEmails({ sync: true, silent: true });
     }
   };
 
@@ -347,18 +535,20 @@ export default function InboxClient() {
             return (
               <button
                 key={cat.id}
-                onClick={() => {
-                  setCategory(cat.id);
-                  setSelectedEmailId(null);
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold transition-all ${
+                onClick={() => handleCategoryChange(cat.id)}
+                disabled={isLoadingList && category === cat.id}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer disabled:cursor-wait ${
                   isActive
                     ? 'bg-terracotta/10 text-terracotta'
                     : 'text-espresso/60 hover:bg-cream/40 hover:text-espresso/90'
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  {cat.icon}
+                  {isLoadingList && isActive ? (
+                    <InboxSpinner className="h-4 w-4" />
+                  ) : (
+                    cat.icon
+                  )}
                   <span>{cat.label}</span>
                 </div>
                 {cat.id === 'inbox' && unreadCount > 0 && (
@@ -381,7 +571,7 @@ export default function InboxClient() {
             <span>Live Sync</span>
           </div>
           <button 
-            onClick={() => fetchEmails(true)} 
+            onClick={() => fetchEmails({ sync: true, manual: true })} 
             disabled={isRefreshing}
             className="hover:underline flex items-center gap-1 disabled:opacity-50"
           >
@@ -403,18 +593,26 @@ export default function InboxClient() {
               {category}
             </span>
             <div className="flex items-center gap-2">
-              {lastRefreshed && (
+              {isLoadingList ? (
+                <span className="flex items-center gap-1.5 text-[10px] text-terracotta/70">
+                  <InboxSpinner className="h-3 w-3" />
+                  Loading…
+                </span>
+              ) : lastRefreshed ? (
                 <span className="text-[10px] text-espresso/40">
                   Refreshed {timeAgo(lastRefreshed.toISOString())}
                 </span>
-              )}
+              ) : null}
             </div>
           </div>
 
           {/* List Content */}
-          <div className="flex-1 overflow-y-auto divide-y divide-espresso/6">
-            {emails.length > 0 ? (
-              emails.map((email) => {
+          <div className="flex-1 overflow-y-auto">
+            {isLoadingList ? (
+              <EmailListSkeleton />
+            ) : emails.length > 0 ? (
+              <div className="divide-y divide-espresso/6">
+              {emails.map((email) => {
                 const isSelected = selectedEmailId === email.id;
                 return (
                   <div
@@ -487,7 +685,8 @@ export default function InboxClient() {
 
                   </div>
                 );
-              })
+              })}
+              </div>
             ) : (
               <div className="p-8 text-center bg-cream/10 border-t border-espresso/5">
                 <p className="text-xs text-espresso/45">No messages in this folder.</p>
@@ -514,7 +713,7 @@ export default function InboxClient() {
                 email={emailDetail}
                 onBack={() => setSelectedEmailId(null)}
                 onReply={handleReply}
-                onRefresh={fetchEmails}
+                onRefresh={() => fetchEmails({ sync: true, silent: true })}
               />
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
@@ -533,6 +732,9 @@ export default function InboxClient() {
         {/* Placeholder Pane (when no email is selected on desktop) */}
         {!selectedEmailId && (
           <div className="hidden md:flex flex-1 items-center justify-center bg-cream/5 border-l border-espresso/5 select-none p-8 text-center">
+            {isLoadingList ? (
+              <EmailListLoader category={category} />
+            ) : (
             <div>
               <div className="inline-flex h-12 w-12 rounded-full bg-cream items-center justify-center text-espresso/25 mb-3">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
@@ -542,6 +744,7 @@ export default function InboxClient() {
               <p className="text-xs text-espresso/40 font-medium">Select an item to read</p>
               <p className="text-[10px] text-espresso/30 mt-0.5">Nothing is selected</p>
             </div>
+            )}
           </div>
         )}
 
@@ -552,7 +755,7 @@ export default function InboxClient() {
         <ComposeModal
           onClose={() => setIsComposeOpen(false)}
           onSent={() => {
-            fetchEmails();
+            fetchEmails({ sync: true, silent: true });
           }}
           replyTo={replyData}
         />
